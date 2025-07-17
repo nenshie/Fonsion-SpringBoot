@@ -66,12 +66,17 @@ public class ReservationServiceImpl implements ReservationService {
         if (request.getDiscountCode() != null) {
             DiscountCode code = discountCodeRepository.findByCode(request.getDiscountCode())
                     .orElseThrow(() -> new RuntimeException("Promo code not found"));
-            reservation.setDiscountCode(code);
+
+            // Provera validnosti promo koda
+            if (Boolean.FALSE.equals(code.getIsValid()) || Boolean.TRUE.equals(code.getIsUsed())) {
+                throw new RuntimeException("Promo code is not valid or already used.");
+            }
 
             reservation.setDiscountCode(code);
             discountPercent = code.getPercent();
             code.setIsUsed(true);
             code.setIsValid(false);
+            discountCodeRepository.save(code);  // Sačuvaj promene odmah
         }
 
         // Guests
@@ -85,7 +90,7 @@ public class ReservationServiceImpl implements ReservationService {
 
         reservation.setGuests(guests);
 
-        // Ukupna cena
+        // Izračunavanje ukupne cene sa popustom
         long nights = ChronoUnit.DAYS.between(request.getDateFrom(), request.getDateTo());
         BigDecimal basePrice = room.getPricePerNight().multiply(BigDecimal.valueOf(nights));
 
@@ -96,11 +101,13 @@ public class ReservationServiceImpl implements ReservationService {
 
         reservation.setTotalPrice(basePrice);
 
-        // Novi promo kod generiši
-        DiscountCode newPromo = generatePromoCode();
-        discountCodeRepository.save(newPromo); // ovaj kod možeš dati korisniku kao nagradu
-
+        // Sačuvaj rezervaciju pre nego što kreiraš novi promo kod (da bismo mogli da je vežemo)
         Reservation saved = reservationRepository.save(reservation);
+
+        // Generisanje novog promo koda i veza sa rezervacijom
+        DiscountCode newPromo = generatePromoCode();
+        newPromo.setGeneratedByReservation(saved);
+        discountCodeRepository.save(newPromo); // Sačuvaj promo kod
 
         return mapToDto(saved);
     }

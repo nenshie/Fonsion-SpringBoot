@@ -1,15 +1,12 @@
 package com.nevena.fonsion.entities;
 
-import jakarta.persistence.Column;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.Table;
+import jakarta.persistence.*;
 import lombok.Data;
 
 
 @Data
 @Entity
-@Table(name = "DiscountCode", schema = "FONsion")
+@Table(name = "DiscountCode", schema = "fonsion")
 public class DiscountCode {
     @Id
     @Column(name = "code", nullable = false, length = 30)
@@ -24,6 +21,9 @@ public class DiscountCode {
     @Column(name = "is_valid")
     private Boolean isValid;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "generated_by_reservation_id")
+    private Reservation generatedByReservation;
 
 
 }

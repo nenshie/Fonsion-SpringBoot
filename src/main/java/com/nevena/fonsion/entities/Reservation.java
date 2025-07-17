@@ -12,7 +12,7 @@ import java.util.List;
 
 @Data
 @Entity
-@Table(name = "Reservation", schema = "FONsion")
+@Table(name = "Reservation", schema = "fonsion")
 public class Reservation {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -39,7 +39,7 @@ public class Reservation {
     private String token;
 
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "discount_code")
+    @JoinColumn(name = "discount_code", referencedColumnName = "code")
     private DiscountCode discountCode;
 
     @Enumerated(EnumType.STRING)
