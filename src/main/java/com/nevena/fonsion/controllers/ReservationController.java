@@ -1,6 +1,7 @@
 package com.nevena.fonsion.controllers;
 
 import com.nevena.fonsion.dto.ReservationDto;
+import com.nevena.fonsion.dto.ReservationPreviewDto;
 import com.nevena.fonsion.dto.ReservationRequestDto;
 import com.nevena.fonsion.services.ReservationService;
 import lombok.extern.slf4j.Slf4j;
@@ -23,6 +24,15 @@ public class ReservationController {
     @PostMapping("/create")
     public ResponseEntity<ReservationDto> makeReservation(@RequestBody ReservationRequestDto req) {
         return ResponseEntity.ok(reservationService.makeReservation(req));
+    }
+
+    @PostMapping("/preview")
+    public ResponseEntity<ReservationPreviewDto> previewReservation(@RequestBody ReservationRequestDto request) {
+        ReservationPreviewDto preview = reservationService.previewReservation(request);
+        if (!preview.isRoomAvailable()) {
+            return ResponseEntity.badRequest().body(preview);
+        }
+        return ResponseEntity.ok(preview);
     }
 
     @GetMapping("/{token}")

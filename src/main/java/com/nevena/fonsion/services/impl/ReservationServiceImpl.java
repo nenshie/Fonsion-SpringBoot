@@ -17,6 +17,7 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import java.util.Random;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -101,15 +102,17 @@ public class ReservationServiceImpl implements ReservationService {
 
         reservation.setTotalPrice(basePrice);
 
-        // Sačuvaj rezervaciju pre nego što kreiraš novi promo kod (da bismo mogli da je vežemo)
         Reservation saved = reservationRepository.save(reservation);
 
-        // Generisanje novog promo koda i veza sa rezervacijom
+        // Generisanje novog promo koda
         DiscountCode newPromo = generatePromoCode();
         newPromo.setGeneratedByReservation(saved);
         discountCodeRepository.save(newPromo); // Sačuvaj promo kod
 
-        return mapToDto(saved);
+        ReservationDto dto = mapToDto(saved);
+        dto.setGeneratedPromoCode(newPromo.getCode());
+
+        return dto;
     }
 
     private DiscountCode generatePromoCode() {
@@ -193,6 +196,89 @@ public class ReservationServiceImpl implements ReservationService {
         Reservation reservation = reservationRepository.findByTokenAndEmail(token, email)
                 .orElseThrow(() -> new RuntimeException("Reservation not found."));
         return mapToDto(reservation);
+    }
+
+    @Override
+    public ReservationPreviewDto previewReservation(ReservationRequestDto request) {
+        ReservationPreviewDto preview = new ReservationPreviewDto();
+
+        Room room = roomRepository.findById(request.getRoomId())
+                .orElse(null);
+
+        if (room == null) {
+            preview.setRoomAvailable(false);
+            preview.setMessage("Room not found.");
+            return preview;
+        }
+
+        if (request.getGuests() == null || request.getGuests().isEmpty()) {
+            preview.setRoomAvailable(false);
+            preview.setMessage("Morate uneti makar jednog gosta.");
+            return preview;
+        }
+
+        if (request.getGuests().size() > room.getCapacity()) {
+            preview.setRoomAvailable(false);
+            preview.setMessage("Soba ne podržava unet broj gostiju.");
+            return preview;
+        }
+
+        if (!isRoomAvailable(request.getRoomId(), request.getDateFrom(), request.getDateTo())) {
+            preview.setRoomAvailable(false);
+            preview.setMessage("Soba nije dostupna za izabrane datume");
+            return preview;
+        }
+
+        if (request.getDateFrom().isBefore(LocalDate.now())) {
+            preview.setRoomAvailable(false);
+            preview.setMessage("Datum dolaska ne može biti u prošlosti.");
+            return preview;
+        }
+
+        if (request.getDateTo().isBefore(request.getDateFrom()) || request.getDateTo().isEqual(request.getDateFrom())) {
+            preview.setRoomAvailable(false);
+            preview.setMessage("Datum odlaska mora biti posle datuma dolaska.");
+            return preview;
+        }
+
+        long nights = ChronoUnit.DAYS.between(request.getDateFrom(), request.getDateTo());
+        BigDecimal basePrice = room.getPricePerNight().multiply(BigDecimal.valueOf(nights));
+        BigDecimal finalPrice = basePrice;
+        Integer discountPercent = 0;
+
+        String discountCodeStatus = "NOT_PROVIDED";
+
+        if (request.getDiscountCode() != null && !request.getDiscountCode().isBlank()) {
+            Optional<DiscountCode> optionalCode = discountCodeRepository.findByCode(request.getDiscountCode());
+
+            if (optionalCode.isPresent()) {
+                DiscountCode code = optionalCode.get();
+                if (Boolean.TRUE.equals(code.getIsValid()) && Boolean.FALSE.equals(code.getIsUsed())) {
+                    discountPercent = code.getPercent();
+                    BigDecimal discount = basePrice.multiply(BigDecimal.valueOf(discountPercent))
+                            .divide(BigDecimal.valueOf(100));
+                    finalPrice = basePrice.subtract(discount);
+                    discountCodeStatus = "VALID";
+                } else {
+                    discountCodeStatus = "INVALID";
+                }
+            } else {
+                discountCodeStatus = "INVALID";
+            }
+        }
+
+        preview.setRoomAvailable(true);
+        preview.setTotalPrice(finalPrice);
+        preview.setDiscountCodeStatus(discountCodeStatus);
+        preview.setMessage("Soba je dostupna.Ukupna cena: " + basePrice + " EUR" +
+                (discountPercent > 0 ? ". Umanjena cena: "+finalPrice+ ", sa primenjenih "+ discountPercent + "% popusta." : "."));
+        preview.setEmail(request.getEmail());
+        preview.setDateFrom(request.getDateFrom());
+        preview.setDateTo(request.getDateTo());
+        preview.setGuests(request.getGuests());
+        preview.setDiscountCode(request.getDiscountCode());
+
+        return preview;
     }
 
 }
