@@ -8,6 +8,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 
 @CrossOrigin(origins = "http://localhost:5173")
 @Slf4j
@@ -35,22 +37,23 @@ public class ReservationController {
         return ResponseEntity.ok(preview);
     }
 
+    @GetMapping("/verify-access")
+    public List<ReservationDto> verifyAccess(@RequestParam String email, @RequestParam String token) {
+        return reservationService.findAllByEmailAndToken(email, token);
+    }
+
+    @PutMapping("/cancel/{id}")
+    public ResponseEntity<Void> cancelReservation(@PathVariable Long id) {
+        reservationService.cancelReservation(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @GetMapping("/{token}")
     public ResponseEntity<ReservationDto> getReservationDetails(@PathVariable String token) {
         return ResponseEntity.ok(reservationService.getReservationByToken(token));
     }
 
-    @DeleteMapping("/{token}")
-    public ResponseEntity<Void> cancelReservation(@PathVariable String token) {
-        reservationService.cancelReservation(token);
-        return ResponseEntity.ok().build();
-    }
 
-    @GetMapping("/by-token-email")
-    public ResponseEntity<ReservationDto> getReservationByTokenAndEmail(
-            @RequestParam String token,
-            @RequestParam String email
-    ) {
-        return ResponseEntity.ok(reservationService.getReservationByTokenAndEmail(token, email));
-    }
+
+
 }

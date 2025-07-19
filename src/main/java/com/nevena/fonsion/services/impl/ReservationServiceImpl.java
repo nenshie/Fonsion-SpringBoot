@@ -50,7 +50,7 @@ public class ReservationServiceImpl implements ReservationService {
         }
 
         if (!isRoomAvailable(request.getRoomId(), request.getDateFrom(), request.getDateTo())) {
-            throw new RuntimeException("Room is not available for selected dates.");
+            throw new RuntimeException("Room is not available for the selected dates.");
         }
 
         Reservation reservation = new Reservation();
@@ -61,25 +61,6 @@ public class ReservationServiceImpl implements ReservationService {
         reservation.setToken(UUID.randomUUID().toString());
         reservation.setStatus(ReservationStatus.ACTIVE);
 
-        Integer discountPercent = 0;
-
-        // Discount code ako postoji
-        if (request.getDiscountCode() != null) {
-            DiscountCode code = discountCodeRepository.findByCode(request.getDiscountCode())
-                    .orElseThrow(() -> new RuntimeException("Promo code not found"));
-
-            // Provera validnosti promo koda
-            if (Boolean.FALSE.equals(code.getIsValid()) || Boolean.TRUE.equals(code.getIsUsed())) {
-                throw new RuntimeException("Promo code is not valid or already used.");
-            }
-
-            reservation.setDiscountCode(code);
-            discountPercent = code.getPercent();
-            code.setIsUsed(true);
-            code.setIsValid(false);
-            discountCodeRepository.save(code);  // Sačuvaj promene odmah
-        }
-
         // Guests
         List<Guest> guests = request.getGuests().stream()
                 .map(name -> {
@@ -88,32 +69,47 @@ public class ReservationServiceImpl implements ReservationService {
                     g.setReservation(reservation);
                     return g;
                 }).collect(Collectors.toList());
-
         reservation.setGuests(guests);
 
-        // Izračunavanje ukupne cene sa popustom
-        long nights = ChronoUnit.DAYS.between(request.getDateFrom(), request.getDateTo());
-        BigDecimal basePrice = room.getPricePerNight().multiply(BigDecimal.valueOf(nights));
+        // Discount code
+        int discountPercent = 0;
+        if (request.getDiscountCode() != null && !request.getDiscountCode().isBlank()) {
+            DiscountCode code = discountCodeRepository.findByCode(request.getDiscountCode())
+                    .orElseThrow(() -> new RuntimeException("Promo code not found."));
 
-        if (discountPercent > 0) {
-            BigDecimal discount = basePrice.multiply(BigDecimal.valueOf(discountPercent)).divide(BigDecimal.valueOf(100));
-            basePrice = basePrice.subtract(discount);
+            if (Boolean.FALSE.equals(code.getIsValid()) || Boolean.TRUE.equals(code.getIsUsed())) {
+                throw new RuntimeException("Promo code is not valid or already used.");
+            }
+
+            reservation.setDiscountCode(code);
+            discountPercent = code.getPercent();
+
+            code.setIsUsed(true);
+            code.setIsValid(false);
+            discountCodeRepository.save(code);
         }
 
-        reservation.setTotalPrice(basePrice);
+        // Price calculation
+        long nights = ChronoUnit.DAYS.between(request.getDateFrom(), request.getDateTo());
+        BigDecimal total = room.getPricePerNight().multiply(BigDecimal.valueOf(nights));
 
+        if (discountPercent > 0) {
+            BigDecimal discount = total.multiply(BigDecimal.valueOf(discountPercent)).divide(BigDecimal.valueOf(100));
+            total = total.subtract(discount);
+        }
+
+        reservation.setTotalPrice(total);
+
+        // Save reservation FIRST
         Reservation saved = reservationRepository.save(reservation);
 
-        // Generisanje novog promo koda
-        DiscountCode newPromo = generatePromoCode();
-        newPromo.setGeneratedByReservation(saved);
-        discountCodeRepository.save(newPromo); // Sačuvaj promo kod
+        DiscountCode newCode = generatePromoCode();
+        newCode.setGeneratedByReservation(saved);
+        discountCodeRepository.save(newCode);
 
-        ReservationDto dto = mapToDto(saved);
-        dto.setGeneratedPromoCode(newPromo.getCode());
-
-        return dto;
+        return mapToDto(saved);
     }
+
 
     private DiscountCode generatePromoCode() {
         int[] options = {5, 10, 15, 20};
@@ -127,6 +123,7 @@ public class ReservationServiceImpl implements ReservationService {
         return code;
     }
 
+
     @Override
     public ReservationDto getReservationByToken(String token) {
         Reservation reservation = reservationRepository.findByToken(token)
@@ -136,20 +133,22 @@ public class ReservationServiceImpl implements ReservationService {
 
     @Override
     @Transactional
-    public void cancelReservation(String token) {
-        Reservation reservation = reservationRepository.findByToken(token)
-                .orElseThrow(() -> new RuntimeException("Reservation not found"));
+    public void cancelReservation(Long reservationId) {
+        Reservation reservation = reservationRepository.findById(reservationId)
+                .orElseThrow(() -> new RuntimeException("Rezervacija nije pronađena."));
 
-        if (reservation.getDateFrom().minusDays(5).isBefore(LocalDate.now())) {
-            throw new RuntimeException("Cannot cancel reservation less than 5 days before start date.");
-        }
-
-        if (reservation.getDiscountCode() != null) {
-            DiscountCode dc = reservation.getDiscountCode();
-            dc.setIsValid(false);
+        if (reservation.getStatus() == ReservationStatus.CANCELED) {
+            return;
         }
 
         reservation.setStatus(ReservationStatus.CANCELED);
+
+        Optional<DiscountCode> generated = discountCodeRepository.findByGeneratedByReservation(reservation);
+        generated.ifPresent(code -> {
+            code.setIsValid(false);
+            discountCodeRepository.save(code);
+        });
+
         reservationRepository.save(reservation);
     }
 
@@ -164,38 +163,42 @@ public class ReservationServiceImpl implements ReservationService {
         dto.setTotalPrice(reservation.getTotalPrice());
 
         Room room = reservation.getRoom();
-        RoomDto roomDto = new RoomDto(
-                room.getId(), room.getName(), room.getCapacity(),
-                room.getDescription(), room.getPricePerNight(), room.getImageUrl()
-        );
-        dto.setRoom(roomDto);
+        dto.setRoom(new RoomDto(
+                room.getId(),
+                room.getName(),
+                room.getCapacity(),
+                room.getDescription(),
+                room.getPricePerNight(),
+                room.getImageUrl()
+        ));
 
         if (reservation.getDiscountCode() != null) {
             DiscountCode dc = reservation.getDiscountCode();
-            dto.setDiscountCode(new DiscountCodeDto(dc.getCode(), dc.getPercent(), dc.getIsUsed(), dc.getIsValid()));
+            dto.setDiscountCode(new DiscountCodeDto(
+                    dc.getCode(),
+                    dc.getPercent(),
+                    dc.getIsUsed(),
+                    dc.getIsValid()
+            ));
         }
 
         List<GuestDto> guestDtos = reservation.getGuests().stream()
                 .map(g -> new GuestDto(g.getId(), g.getFullName()))
                 .collect(Collectors.toList());
-
         dto.setGuests(guestDtos);
+
+        discountCodeRepository.findByGeneratedByReservation(reservation)
+                .ifPresent(generatedCode -> dto.setGeneratedPromoCode(generatedCode.getCode()));
 
         return dto;
     }
+
 
     public boolean isRoomAvailable(Long roomId, LocalDate dateFrom, LocalDate dateTo) {
         List<Reservation> overlapping = reservationRepository
                 .findOverlappingReservations(roomId, dateFrom, dateTo);
 
         return overlapping.isEmpty();
-    }
-
-    @Override
-    public ReservationDto getReservationByTokenAndEmail(String token, String email) {
-        Reservation reservation = reservationRepository.findByTokenAndEmail(token, email)
-                .orElseThrow(() -> new RuntimeException("Reservation not found."));
-        return mapToDto(reservation);
     }
 
     @Override
@@ -280,5 +283,15 @@ public class ReservationServiceImpl implements ReservationService {
 
         return preview;
     }
+
+    @Override
+    public List<ReservationDto> findAllByEmailAndToken(String email, String token) {
+        return reservationRepository
+                .findAllByEmailAndTokenAndStatus(email, token, ReservationStatus.ACTIVE)
+                .stream()
+                .map(this::mapToDto)
+                .collect(Collectors.toList());
+    }
+
 
 }

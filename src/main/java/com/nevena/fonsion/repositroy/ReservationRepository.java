@@ -1,6 +1,7 @@
 package com.nevena.fonsion.repositroy;
 
 import com.nevena.fonsion.entities.Reservation;
+import com.nevena.fonsion.enums.ReservationStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -23,6 +24,18 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
             @Param("dateTo") LocalDate dateTo);
 
 
-    Optional<Reservation> findByTokenAndEmail(String token, String email);
+    @Query("""
+            SELECT r FROM Reservation r
+            LEFT JOIN FETCH r.discountCode
+            LEFT JOIN FETCH r.room
+            LEFT JOIN FETCH r.guests
+            WHERE r.email = :email AND r.token = :token AND r.status = :status
+        """)
+    List<Reservation> findAllByEmailAndTokenAndStatus(
+            @Param("email") String email,
+            @Param("token") String token,
+            @Param("status") ReservationStatus status
+    );
+
 
 }
