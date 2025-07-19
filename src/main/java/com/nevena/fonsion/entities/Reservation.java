@@ -48,7 +48,4 @@ public class Reservation {
 
     @OneToMany(mappedBy = "reservation", cascade = CascadeType.ALL, orphanRemoval = true)
     private List<Guest> guests = new ArrayList<>();
-
-
-
 }
