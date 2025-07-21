@@ -11,7 +11,9 @@ import com.nevena.fonsion.repositroy.ReservationRepository;
 import com.nevena.fonsion.repositroy.RoomRepository;
 import com.nevena.fonsion.services.ReservationService;
 import jakarta.transaction.Transactional;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -139,6 +141,13 @@ public class ReservationServiceImpl implements ReservationService {
 
         if (reservation.getStatus() == ReservationStatus.CANCELED) {
             return;
+        }
+
+        LocalDate today = LocalDate.now();
+        LocalDate startDate = reservation.getDateFrom();
+
+        if (!today.isBefore(startDate.minusDays(5))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Rezervaciju je moguće otkazati najkasnije 5 dana pre početnog datuma.");
         }
 
         reservation.setStatus(ReservationStatus.CANCELED);
