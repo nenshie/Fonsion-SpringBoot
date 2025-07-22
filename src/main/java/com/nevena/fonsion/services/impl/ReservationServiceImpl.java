@@ -102,7 +102,6 @@ public class ReservationServiceImpl implements ReservationService {
 
         reservation.setTotalPrice(total);
 
-        // Save reservation FIRST
         Reservation saved = reservationRepository.save(reservation);
 
         DiscountCode newCode = generatePromoCode();
@@ -125,13 +124,6 @@ public class ReservationServiceImpl implements ReservationService {
         return code;
     }
 
-
-    @Override
-    public ReservationDto getReservationByToken(String token) {
-        Reservation reservation = reservationRepository.findByToken(token)
-                .orElseThrow(() -> new RuntimeException("Reservation not found"));
-        return mapToDto(reservation);
-    }
 
     @Override
     @Transactional

@@ -48,10 +48,6 @@ public class ReservationController {
         return ResponseEntity.noContent().build();
     }
 
-    @GetMapping("/{token}")
-    public ResponseEntity<ReservationDto> getReservationDetails(@PathVariable String token) {
-        return ResponseEntity.ok(reservationService.getReservationByToken(token));
-    }
 
 
 

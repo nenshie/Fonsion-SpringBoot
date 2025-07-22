@@ -11,8 +11,6 @@ public interface ReservationService {
 
     ReservationDto makeReservation(ReservationRequestDto request);
 
-    ReservationDto getReservationByToken(String token);
-
     void cancelReservation(Long id);
 
     ReservationPreviewDto previewReservation(ReservationRequestDto request);

@@ -25,14 +25,6 @@ public class RoomServiceImpl implements RoomService {
                 .collect(Collectors.toList());
     }
 
-    @Override
-    public RoomDto getRoomById(Long id) {
-        Room room = roomRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Room not found"));
-        return mapToDto(room);
-
-    }
-
 
     private RoomDto mapToDto(Room room) {
         return new RoomDto(
